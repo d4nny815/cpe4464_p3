@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 #define DEBUG
-// #define L3_IMPL
+#define L3_IMPL
 
 static int noprompt = 0;
 
@@ -67,15 +67,26 @@ static void keyboard_callback(char *line) {
 
 #ifdef L3_IMPL
 
-// int my_fishnode_l3_receive(void *l3frame, int len) {
-
-
-//     return 0;
-// }
+int my_fishnode_l3_receive(void *l3frame, int len, uint8_t protocol) {
+    printf("--------------------------------\n");
+    printf("[L3_RECV] Received L3 frame\n");
+    printf("[L3_RECV] Length: %d\n", len);
+    printf("[L3_RECV] Protocol: %d\n", protocol);
+    printf("[L3_RECV] L3 frame: %s\n", (char *)l3frame);
+    return 0;
+}
 
 // int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
 //                   uint8_t proto, uint8_t ttl) {
  
+ 
+
+//     printf("--------------------------------\n");
+//     printf("[L3_SEND] Sending L3 frame to %s\n", fn_ntoa(dst_addr));
+//     printf("[L3_SEND] Length: %d\n", len);
+//     printf("[L3_SEND] Protocol: %d\n", proto);
+//     printf("[L3_SEND] TTL: %d\n", ttl);
+//     printf("[L3_SEND] L4 frame: %s\n", (char *)l4frame);
 //     return 0;
 // }
 
@@ -158,7 +169,8 @@ int main(int argc, char **argv)
    fflush(stdout);
 
 #ifdef L3_IMPL
-//    fish_l3.fishnode_l3_receive = &my_fishnode_l3_receive;
+    printf("[L3_IMPL] Enabling L3 implementation\n");
+    fish_l3.fishnode_l3_receive = &my_fishnode_l3_receive;
 //    fish_l3.fish_l3_send = &my_fish_l3_send;
 //    fish_l3.fish_l3_forward = &my_fish_l3_forward;
    
