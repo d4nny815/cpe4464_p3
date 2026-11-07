@@ -1,0 +1,6 @@
+*-Darwin-arm*
+*-Linux-x86_64*
+cpe4464_fishnet_r2*
+.DS_Store
+*.txt
+logs/
