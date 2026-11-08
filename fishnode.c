@@ -177,12 +177,12 @@ int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
     fish_debugframe(FISH_DEBUG_USER1, "[L3 SEND] Received L4 frame",
                     l4frame, 4, len, 0, proto);
 
-    printf("--------------------------------\n");
-    printf("[L3 SEND] Sending L3 frame to %s\n", fn_ntoa(dst_addr));
-    printf("[L3 SEND] Length: %d\n", len);
-    printf("[L3 SEND] Protocol: %d\n", proto);
-    printf("[L3 SEND] TTL: %d\n", ttl);
-    printf("[L3 SEND] L4 frame: %s\n", (char *)l4frame);
+    // printf("--------------------------------\n");
+    // printf("[L3 SEND] Sending L3 frame to %s\n", fn_ntoa(dst_addr));
+    // printf("[L3 SEND] Length: %d\n", len);
+    // printf("[L3 SEND] Protocol: %d\n", proto);
+    // printf("[L3 SEND] TTL: %d\n", ttl);
+    // printf("[L3 SEND] L4 frame: %s\n", (char *)l4frame);
 
     // make l4
     //   if l4_ttl = min(ttl, MAX_TTL)
@@ -193,7 +193,7 @@ int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
     // construct l4 header based off of proto
 
     uint8_t l4_ttl = ttl == 0 ? MAX_TTL : (ttl < MAX_TTL ? ttl : MAX_TTL);
-    printf("[L3 SEND] L4 TTL: %d\n", l4_ttl);
+    // printf("[L3 SEND] L4 TTL: %d\n", l4_ttl);
 
     fnaddr_t src_addr = fish_getaddress();
     uint8_t packet_id = fish_next_pktid();
