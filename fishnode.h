@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include "fish.h"
 
+// L2 Structs
+
+typedef enum {
+    L2_PROTO_L3 = 1,
+} L2Protocol_t;
+
 // L3 Structs
 
 #define FISH_BROADCAST_ADDR 0xFFFFFFFF
@@ -32,6 +38,12 @@ typedef enum {
     L4_PROTO_ECHO_RESP = 2,
     L4_PROTO_REQ_SPOOF = 3,
 } L4Protocol_t;
+
+typedef enum {
+    FCMP_TTL_EXCEEDED = 1,
+    FCMP_NET_UNREACHABLE = 2,
+    FCMP_HOST_UNREACHABLE = 3,
+} FCMPError_t;
 
 
 #endif /* FISHNODE_H */

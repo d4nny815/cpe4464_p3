@@ -220,15 +220,47 @@ int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
 }
 
 int my_fish_l3_forward(void *l3frame, int len) {
+    /*
+    Takes an already-encapsulated L3 frame, looks up the destination in the forwarding table, and passes the frame off to L2.
+
+    l3frame A pointer to the L3 frame. Note that this is different than fish_l3_send which takes a L4 frame. The original frame memory must not be modified. The caller is responsible for freeing any memory after this function has completed.
+    len The length of the L3 frame.
+
+    Returns
+        The return value is ignored
+
+    fish_l3_forward is given a L3 encapsulated frame and is responsible for delivering it. This requires the following steps:
+
+    If the TTL is 0 and the destination is not local, drop the packet and generate the correct FCMP error message.
+    Lookup the L3 destination in the forwarding table.
+    If there is no route to the destination, drop the frame and generate the correct FCMP error.
+    Use fish_l2_send to send the frame to the next-hop neighbor indicated by the forwarding table.
+    */
+
+    fish_debugframe(FISH_DEBUG_USER1, "[L3 FORWARD] Forwarding L3 frame",
+                    l3frame, 3, len, L2_PROTO_L3, 0);
+
     l3Header_t *header = (l3Header_t *)l3frame;
-    fish_debugframe(FISH_DEBUG_USER1, "[L3 FORWARD] Forwarding L3 frame to %s",
-                    l3frame, 3, len, header->protocol, 0);
-    
 
-    fnaddr_t next_hop = header->dst_l3_addr;
-    uint8_t proto = 0;
+    // case 1: TTL expired on a packet that isn't for me
+    if (header->ttl == 0 && header->dst_l3_addr != fish_getaddress()) {
+        fish_debug(FISH_DEBUG_USER1, "[L3 FORWARD] TTL reached zero, sending FCMP TTL exceeded\n");
+        fish_fcmp.send_fcmp_response(l3frame, len, FCMP_TTL_EXCEEDED);
+        return 0;
+    }
 
-    fish_l2.fish_l2_send(l3frame, next_hop, len, proto);
+    // case 2: no route to the destination
+    fnaddr_t next_hop = fish_fwd.longest_prefix_match(header->dst_l3_addr);
+    if (next_hop == 0) {
+        fish_debug(FISH_DEBUG_USER1, "[L3 FORWARD] No route to %s, sending FCMP network unreachable\n",
+                   fn_ntoa(header->dst_l3_addr));
+        fish_fcmp.send_fcmp_response(l3frame, len, FCMP_NET_UNREACHABLE);
+        return 0;
+    }
+
+    // case 3: valid 
+    fish_debug(FISH_DEBUG_USER1, "[L3 FORWARD] Next hop %s\n", fn_ntoa(next_hop));
+    fish_l2.fish_l2_send(l3frame, next_hop, len, L2_PROTO_L3);
 
     return 0;
 }
