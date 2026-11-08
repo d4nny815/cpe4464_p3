@@ -27,6 +27,11 @@ typedef enum {
 
 // L4 Structs
 
+typedef enum {
+    L4_PROTO_ECHO_REQ = 1,
+    L4_PROTO_ECHO_RESP = 2,
+    L4_PROTO_REQ_SPOOF = 3,
+} L4Protocol_t;
 
 
 #endif /* FISHNODE_H */

@@ -70,7 +70,6 @@ static void keyboard_callback(char *line) {
 #ifdef L3_IMPL
 
 
-
 int my_fishnode_l3_receive(void *l3frame, int len, uint8_t protocol) {
     /*
     Decapsulates the frame and forwards it or passes it the L4 as needed. 
@@ -159,23 +158,80 @@ int my_fishnode_l3_receive(void *l3frame, int len, uint8_t protocol) {
     return 0;
 }
 
-// int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
-//                   uint8_t proto, uint8_t ttl) {
- 
- 
+int my_fish_l3_send(void *l4frame, int len, fnaddr_t dst_addr,
+                  uint8_t proto, uint8_t ttl) {
+    /*
+    Receives a new L4 frame to be sent over the network.
 
-//     printf("--------------------------------\n");
-//     printf("[L3_SEND] Sending L3 frame to %s\n", fn_ntoa(dst_addr));
-//     printf("[L3_SEND] Length: %d\n", len);
-//     printf("[L3_SEND] Protocol: %d\n", proto);
-//     printf("[L3_SEND] TTL: %d\n", ttl);
-//     printf("[L3_SEND] L4 frame: %s\n", (char *)l4frame);
-//     return 0;
-// }
+    l4frame A pointer to the L4 frame. The original frame memory must not be modified. The caller is responsible for freeing any memory after this function has completed.
+    len The length of the L4 frame
+    dst_addr The L3 address of the final destination for this frame.
+    proto The fishnet protocol number of the L4 frame
+    ttl The TTL for the frame, or 0 to use the maximum TTL. If the TTL is greater than the maximum TTL, set it to the maximum TTL.
 
-// int my_fish_l3_forward(void *l3frame, int len) {
-//     return 0;
-// }
+    Returns
+        The return value is ignored
+
+    This function is responsible for encapsulating a L4 frame in a L3 header and then forwarding the packet through the fishnet. Forwarding is accomplished by calling the fish_l3_forward() function.
+    */
+    fish_debugframe(FISH_DEBUG_USER1, "[L3 SEND] Received L4 frame",
+                    l4frame, 4, len, 0, proto);
+
+    printf("--------------------------------\n");
+    printf("[L3 SEND] Sending L3 frame to %s\n", fn_ntoa(dst_addr));
+    printf("[L3 SEND] Length: %d\n", len);
+    printf("[L3 SEND] Protocol: %d\n", proto);
+    printf("[L3 SEND] TTL: %d\n", ttl);
+    printf("[L3 SEND] L4 frame: %s\n", (char *)l4frame);
+
+    // make l4
+    //   if l4_ttl = min(ttl, MAX_TTL)
+    //   if l4_ttl == 0
+    //     l4_ttl = MAX_TTL
+    // forward the packet
+
+    // construct l4 header based off of proto
+
+    uint8_t l4_ttl = ttl == 0 ? MAX_TTL : (ttl < MAX_TTL ? ttl : MAX_TTL);
+    printf("[L3 SEND] L4 TTL: %d\n", l4_ttl);
+
+    fnaddr_t src_addr = fish_getaddress();
+    uint8_t packet_id = fish_next_pktid();
+    l3Header_t header = (l3Header_t){
+        l4_ttl,
+        proto, // ? is this l3 protocol?
+        packet_id,
+        src_addr,
+        dst_addr,
+    };
+
+    void* l3frame = (void*)calloc(1, sizeof(l3Header_t) + len);
+    memcpy(l3frame, &header, sizeof(l3Header_t));
+    memcpy((uint8_t*)l3frame + sizeof(l3Header_t), l4frame, len);
+
+    fish_debugframe(FISH_DEBUG_USER1, "[L3 SEND] Built L3 frame",
+        l3frame, 3, len + sizeof(l3Header_t), 1, 0);
+
+    fish_l3.fish_l3_forward(l3frame, sizeof(l3Header_t) + len);
+    
+    free(l3frame);
+
+    return 0;
+}
+
+int my_fish_l3_forward(void *l3frame, int len) {
+    l3Header_t *header = (l3Header_t *)l3frame;
+    fish_debugframe(FISH_DEBUG_USER1, "[L3 FORWARD] Forwarding L3 frame to %s",
+                    l3frame, 3, len, header->protocol, 0);
+    
+
+    fnaddr_t next_hop = header->dst_l3_addr;
+    uint8_t proto = 0;
+
+    fish_l2.fish_l2_send(l3frame, next_hop, len, proto);
+
+    return 0;
+}
 
 // // Callback to broadcast DV advertisement
 // void my_timed_event(void*) {
@@ -254,8 +310,8 @@ int main(int argc, char **argv)
 
 #ifdef L3_IMPL
     fish_l3.fishnode_l3_receive = &my_fishnode_l3_receive;
-//    fish_l3.fish_l3_send = &my_fish_l3_send;
-//    fish_l3.fish_l3_forward = &my_fish_l3_forward;
+    fish_l3.fish_l3_send = &my_fish_l3_send;
+    fish_l3.fish_l3_forward = &my_fish_l3_forward;
    
    // Set up a callback to broadcast DV advertisement
 //    fish_scheduleevent(0, &my_timed_event, NULL);
