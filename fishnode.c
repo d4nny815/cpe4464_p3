@@ -1,6 +1,7 @@
 #include "fishnode.h"
 #include "smartalloc.h"
 #include "fish.h"
+#include "hashtable.h"
 #include <assert.h>
 #include <signal.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 #define L3_IMPL
 
 static int noprompt = 0;
+static hashTable_t* broadcast_table = NULL;
 
 void sigint_handler(int sig) {
    if (SIGINT == sig)
@@ -67,12 +69,93 @@ static void keyboard_callback(char *line) {
 
 #ifdef L3_IMPL
 
+
+
 int my_fishnode_l3_receive(void *l3frame, int len, uint8_t protocol) {
-    printf("--------------------------------\n");
-    printf("[L3_RECV] Received L3 frame\n");
-    printf("[L3_RECV] Length: %d\n", len);
-    printf("[L3_RECV] Protocol: %d\n", protocol);
-    printf("[L3_RECV] L3 frame: %s\n", (char *)l3frame);
+    /*
+    Decapsulates the frame and forwards it or passes it the L4 as needed. 
+    
+
+    l3frame A pointer to the received L3 frame. The only part of the frame that can be modified is the TTL header field. The caller will free the memory for the frame as necessary.
+    len The length of the layer 3 frame, in host byte order
+    protocol The protocol of the L3 frame
+
+    Returns
+        The return value is ignored
+
+    This function is responsible for correctly directing packets to the higher network layers or to the forwarding engine. This requires following general steps:
+
+    If the L3 destination is the node's L3 address, remove the L3 header and pass the frame to the L4 code.
+    If the L3 destination is the broadcast address AND the frame was received by this node previously (use the combination of src L3 address and packet ID to determine this), drop the frame without sending an FCMP message.
+    Otherwise, if the L3 destination is the broadcast address, the frame must be both passed up the network stack and forwarded back out over the fishnet with a decremented TTL.
+    If the L3 addresses isn't the broadcast address and the L3 address isn't the node's address, the TTL is decremented and the frame is forwarded back over the fishnet.
+    */
+
+    fish_debugframe(FISH_DEBUG_USER1, "[L3 RECV] Received L3 frame",
+                    l3frame, 3, len, protocol, 0);
+
+    l3Header_t *header = (l3Header_t *)l3frame;
+
+    void* l4frame = (void*)((uint8_t*)l3frame + sizeof(l3Header_t)); // TODO: placeholder
+    int l4len = len - sizeof(l3Header_t);
+    uint8_t l4proto = header->protocol;
+    fnaddr_t l4src = header->src_l3_addr;
+
+    // Case 1: Packet is meant for this node
+    if (header->dst_l3_addr == fish_getaddress()) {
+        if (header->ttl > MAX_TTL) {
+            // illegal TTL, drop packet
+            fish_debug(FISH_DEBUG_USER1, "[L3 RECV] Illegal TTL, dropping packet\n");
+            return 0;
+        }
+
+        fish_debug(FISH_DEBUG_USER1, "[L3 RECV] L3 Packet meant for me\n");
+
+        // pass it to l4
+        fish_l4.fish_l4_receive(l4frame, l4len, l4proto, l4src);
+    }
+
+    // Case 2: Packet is meant for broadcast
+    else if (header->dst_l3_addr == FISH_BROADCAST_ADDR) { 
+        fish_debug(FISH_DEBUG_USER1, "[L3 RECV] L3 Packet meant for broadcast\n");
+        if (!broadcast_table) {
+            broadcast_table = hashTable_create();
+        }
+
+        // get broadcast table key
+        char* key_str = (char*)calloc(1, 22);
+        snprintf(key_str, 22, "%u:%u", header->src_l3_addr, header->packet_id);
+        fish_debug(FISH_DEBUG_USER1, "[L3 RECV] Inserting into broadcast table: %s\n", key_str);
+
+        if (hashTable_exists(broadcast_table, key_str)) {
+            fish_debug(FISH_DEBUG_USER1, "[L3 RECV] Packet already seen, dropping\n");
+            free(key_str);
+        } else {
+            hashTable_insert(broadcast_table, key_str, NULL);
+            header->ttl--;
+            fish_l3.fish_l3_forward(l3frame, len);
+            fish_l4.fish_l4_receive(l4frame, l4len, l4proto, l4src);
+        }
+    }
+
+    // if l3 dest != broadcast and l3 dest != node l3
+    //   dec TTL in og header
+    //   forward it back out over the fishnet
+    // Case 3: Packet is meant for someone else
+    else if ((header->dst_l3_addr != fish_getaddress()) && (header->dst_l3_addr != FISH_BROADCAST_ADDR)) {
+        fish_debug(FISH_DEBUG_USER1, "[L3 RECV] L3 Packet meant for someone else\n");
+        
+        if (header->ttl < 0) {
+            // if TTL reaches zero, send an FCMP message
+            // TODO: send FCMP message
+            fish_debug(FISH_DEBUG_USER1, "[L3 RECV] TTL reached zero, sending FCMP message\n");
+            return 0;
+        }
+
+        header->ttl--;
+        fish_l3.fish_l3_forward(l3frame, len);
+    }
+
     return 0;
 }
 
@@ -150,7 +233,8 @@ int main(int argc, char **argv)
    /* Set up debugging output */
 #ifdef DEBUG
     // fish_setdebuglevel(FISH_DEBUG_INTERNAL);
-    fish_setdebuglevel(FISH_DEBUG_ALL);
+    // fish_setdebuglevel(FISH_DEBUG_ALL);
+    fish_setdebuglevel(FISH_DEBUG_USER1);
 #else
     fish_setdebuglevel(FISH_DEBUG_NONE);
 #endif
@@ -169,7 +253,6 @@ int main(int argc, char **argv)
    fflush(stdout);
 
 #ifdef L3_IMPL
-    printf("[L3_IMPL] Enabling L3 implementation\n");
     fish_l3.fishnode_l3_receive = &my_fishnode_l3_receive;
 //    fish_l3.fish_l3_send = &my_fish_l3_send;
 //    fish_l3.fish_l3_forward = &my_fish_l3_forward;
@@ -184,7 +267,7 @@ int main(int argc, char **argv)
 //    fish_fwd.longest_prefix_match = &my_longest_prefix_match;
 #endif
 
-#if 0
+#if 1
    /* Enable the built-in neighbor protocol implementation.  This will discover
     * one-hop routes in your fishnet.  The link-state routing protocol requires
     * the neighbor protocol to be working, whereas it is redundant with DV.
@@ -199,7 +282,7 @@ int main(int argc, char **argv)
     * protocol to be enabled. */
 //    fish_enable_lsarouting_builtin(0);
 
-#if 0
+#if 1
    /* Full-featured DV routing.  I suggest NOT using this until you have some
     * reasonable expectation that your code works.  This generates a lot of
     * routing traffic in fishnet */
@@ -226,6 +309,8 @@ int main(int argc, char **argv)
     fishnet_cleanup();
 
     // Cleanup your data structures here
-
+    if (broadcast_table) {
+        hashTable_destroy(broadcast_table);
+    }
     return 0;
 }

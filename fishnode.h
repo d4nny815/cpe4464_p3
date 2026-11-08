@@ -4,31 +4,29 @@
 #include <stdint.h>
 #include "fish.h"
 
-typedef struct __attribute__((packed)) l2_header_t {
-    fn_l2addr_t dst_l2_addr;
-    fn_l2addr_t src_l2_addr;
-    uint16_t checksum;
-    uint16_t length; // including l2 and on
+// L3 Structs
+
+#define FISH_BROADCAST_ADDR 0xFFFFFFFF
+
+typedef struct __attribute__((packed)) l3Header_t {
+    uint8_t ttl;
     uint8_t protocol;
-} l2_header_t;
-
-typedef enum { 
-    L2_PROTO_L3 = 1,
-    L2_PROTO_ARP = 2,
-    L2_PROTO_NEIGHBOR = 3,
-    L2_PROTO_DVR = 4,
-} l2_protocol_t;
-
-typedef struct __attribute__((packed)) l3_arp_frame_t {
-    uint32_t type;
-    fnaddr_t queried_l3_addr;
-    fn_l2addr_t l2_for_query_l3;
-} l3_arp_frame_t;
+    uint32_t packet_id;
+    fnaddr_t src_l3_addr;
+    fnaddr_t dst_l3_addr;
+} l3Header_t;
 
 typedef enum {
-    L3_ARP_REQ = 1,
-    L3_ARP_RSP = 2,
-} l3_arp_type_t;
+    L3_PROTO_PACKET = 1,
+    L3_PROTO_ECHO = 2,
+    L3_PROTO_NAMING = 3,
+    L3_PROTO_LINK_STATE = 4,
+    L3_PROTO_TRANSPORT = 5,
+    L3_PROTO_FCMP = 6,
+} L3Protocol_t;
+
+// L4 Structs
+
 
 
 #endif /* FISHNODE_H */
