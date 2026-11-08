@@ -145,7 +145,7 @@ int my_fishnode_l3_receive(void *l3frame, int len, uint8_t protocol) {
     else if ((header->dst_l3_addr != fish_getaddress()) && (header->dst_l3_addr != FISH_BROADCAST_ADDR)) {
         fish_debug(FISH_DEBUG_USER1, "[L3 RECV] L3 Packet meant for someone else\n");
         
-        if (header->ttl < 0) {
+        if (header->ttl == 0) {
             // if TTL reaches zero, send an FCMP message
             // TODO: send FCMP message
             fish_debug(FISH_DEBUG_USER1, "[L3 RECV] TTL reached zero, sending FCMP message\n");
