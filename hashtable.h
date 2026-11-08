@@ -8,7 +8,8 @@
 #define HASH_DEFAULT_SIZE 1024
 
 typedef struct {
-    bool is_valid; // ? do i need this if the others are already set to NULL when invalid?
+    bool is_valid;
+    bool is_deleted;
     char* key;
     void* value;
 } hashEntry_t;
@@ -49,16 +50,22 @@ void hashTable_insert(hashTable_t* table, char* key, void* value);
 // Returns a pointer to the value if the key exists, NULL otherwise
 void* hashTable_get_value(hashTable_t* table, char* key);
 
+// Get the key for a given value
+// table - pointer to the hashtable
+// value - pointer to the value to lookup
+// Returns a pointer to the key if the value exists, NULL otherwise
+bool hashTable_exists(hashTable_t* table, char* key);
+
 // Remove an element from the hashtable
 // table - pointer to the hashtable
 // key - string key to remove
 void hashTable_remove(hashTable_t* table, char* key);
 
 // Get all the keys for a given value
-// caller is responsible for freeing the array of strings
+// caller is responsible for freeing the array (not key strings)
 // table - pointer to the hashtable
 // value - pointer to the value to lookup
-// Returns a pointer to an array of strings containing the keys
+// Returns a NULL-terminated array of keys whose value matches
 char** hashTable_get_keys(hashTable_t* table, void* value);
 
 #endif /* HASHTABLE_H */
