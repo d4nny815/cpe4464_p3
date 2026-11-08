@@ -27,8 +27,8 @@ FISHLIB = -L. -lfish-$(EXEC_SUFFIX)
 
 all: fishnode-$(EXEC_SUFFIX)
 
-fishnode-$(EXEC_SUFFIX): fishnode.c smartalloc.c hashtable.c fish.h fishnode.h smartalloc.h hashtable.h
-	$(CC) $(CFLAGS) $(OSINC) $(OSDEF) -o $@ fishnode.c smartalloc.c hashtable.c $(FISHLIB) $(OSLIB)
+fishnode-$(EXEC_SUFFIX): fishnode.c smartalloc.c fish.h fishnode.h smartalloc.h
+	$(CC) $(CFLAGS) $(OSINC) $(OSDEF) -o $@ fishnode.c smartalloc.c $(FISHLIB) $(OSLIB)
 
 handin: README.md
 	~bellardo/bin/rcvhandin bellardo p1 README.md smartalloc.c smartalloc.h fishnode.c Makefile
