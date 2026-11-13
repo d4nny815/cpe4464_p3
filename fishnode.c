@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #define DEBUG
 #define L3_IMPL
@@ -271,6 +272,7 @@ char** hashTable_get_keys(hashTable_t* table, void* value) {
 
 static int noprompt = 0;
 static hashTable_t* broadcast_table = NULL;
+static fwEntry_t* fwtable_head = NULL;
 
 void sigint_handler(int sig) {
    if (SIGINT == sig)
@@ -529,23 +531,195 @@ int my_fish_l3_forward(void *l3frame, int len) {
 //     return;
 // }
 
-//    // Full functionality
-// void* my_add_fwtable_entry(fnaddr_t dst, int prefix_length, fnaddr_t next_hop,
-//                      int metric, char type, void *user_data) {
-//     return NULL;
-// }
+static fnaddr_t prefix_to_mask(int prefix_len) {
+    // convert to mask in network order
+    
+    if (prefix_len <= 0) {
+        return 0;
+    }
 
-// void* my_remove_fwtable_entry(void *route_key) {
-//     return NULL;
-// }
+    if (prefix_len >= 32) {
+        return htonl(0xFFFFFFFF);
+    }
 
-// int my_update_fwtable_metric(void *route_key, int new_metric) {
-//     return 0;
-// }
+    return htonl((0xFFFFFFFF) << (32 - prefix_len)); // 32 - prefix is num of bits to shift right
+}
 
-// fnaddr_t my_longest_prefix_match(fnaddr_t addr) {
-//     return 0;
-// }
+static fwEntry_t* fwtable_find_key(uintptr_t route_key) {
+    // return pointer to entry in forward table
+    // key is the addr of the entry
+
+    fwEntry_t* entry = fwtable_head; 
+    while (entry) {
+        if ((uintptr_t)entry == route_key) {
+            return (void*)entry;
+        }
+        entry = entry->next;
+    }
+
+    return NULL;
+}
+
+void* my_add_fwtable_entry(fnaddr_t dst, int prefix_length, fnaddr_t next_hop,
+                           int metric, char type, void *user_data) {
+    /*
+    Add an entry into the forwarding table.
+
+    dst The final destination of the route.
+    prefix_length The prefix length for the route (e.g., 32 for a /32).
+    next_hop The immediate neighbor through which to send the frame to get to the final destination.
+    metric The metric for this route. Lower is better. No metric can be less than 0.
+    type Indicates where this route was learned. It is normally one of the FISH_FWD_TYPE_* constants, but any value is valid.
+    user_data A user specified pointer that is stored with the route. This can be used to store additional protocol specific data.
+
+    Returns
+        An opaque key needed when making modifications (metric changes or deletions) to this route in the future.
+
+    This function adds the given route, as described by the function's parameters, entry into the forwarding table. There may be multiple routes to the same destination and prefix length. In that case all routes are stored in the forwarding table, however only the route with the smallest metric is returned by longest_prefix_match.
+
+    The return value must be stored and used to remove / modify routes.
+    */
+
+    // make entry into a struct
+    //  convert dst and next_hop to network order
+    //  make struct
+    //  add struct into fwd table
+    // return struct, as apart of the table
+    
+    // invalid metric or prefix length
+    if (metric < 0 || prefix_length < 0 || prefix_length > 32) {
+        return NULL;
+    }
+
+    // valid entry, add to table
+    fwEntry_t* entry = (fwEntry_t*)calloc(1, sizeof(fwEntry_t));
+    if (!entry) {
+        return NULL;
+    }
+
+    fnaddr_t mask = prefix_to_mask(prefix_length);
+    entry->mask = mask;
+    entry->dst = dst & mask;
+    entry->prefix_len = prefix_length;
+    entry->next_hop = next_hop;
+    entry->metric = metric;
+    entry->type = type;
+    entry->user_data = user_data;
+
+    // insert at head
+    entry->next = fwtable_head;
+    fwtable_head = entry;
+
+    return (void*)entry;
+}
+
+void* my_remove_fwtable_entry(void* route_key) {
+    /*
+    Completely removes an entry from the forwarding table.
+
+    route_key The key for the entry to be removed. The key is obtained via the return result from the add_fwtable_entry function.
+
+    Returns
+        The user_data value originally added into the forwarding table for the deleted entry.
+    */
+    // key is the addr of the entry
+
+
+    // if key is not in table 
+    //  return NULL
+    // linear search for key
+    //  free entry
+    
+    // key not in table
+    fwEntry_t* entry = fwtable_find_key((uintptr_t)route_key);
+    if (!entry) {
+        return NULL;
+    }
+
+    // unlink the entry from the list: find the node before it
+    fwEntry_t* prev = NULL;
+    fwEntry_t* cur = fwtable_head;
+    while (cur != entry) {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    if (prev) {
+        prev->next = entry->next;
+    }
+    else {
+        // entry was the head
+        fwtable_head = entry->next;
+    }
+
+    void* ret_data = entry->user_data;
+    free(entry);
+
+    return ret_data;
+}
+
+int my_update_fwtable_metric(void *route_key, int new_metric) {
+    /*
+    Updates the metric for the given entry key.
+
+    route_key The key for the entry to be updated. The key is obtained via the return result from the add_fwtable_entry function.
+    new_metric The new metric value.
+
+    Returns
+        True or false if the update succeeds or fails, respectively.
+
+    This function is provided as an optimization. The same thing can be achieved by removing then entry and then adding it back in again, however calling update is computationally much cheaper.
+    */
+
+    // invalid metric
+    if (new_metric < 0) {
+        return 0;
+    }
+
+    // key not in table
+    fwEntry_t* entry = fwtable_find_key((uintptr_t)route_key);
+    if (!entry) {
+        return 0;
+    }
+
+    // update metric
+    entry->metric = new_metric;
+
+    return 1;
+}
+
+fnaddr_t my_longest_prefix_match(fnaddr_t addr) {
+    /*
+    Performs a longest prefix lookup for the given destination address.
+
+    addr The address to lookup
+
+    Returns
+        The L3 address of the best next-hop option, or an invalid L3 address (0) if no entry matches the destination.
+    */
+
+    fwEntry_t* max_prefix = NULL;
+
+    fwEntry_t* entry = fwtable_head;
+    while (entry) {
+        if ((addr & entry->mask) == entry->dst) {
+            // longer prefix wins, same prefix length: lower metric wins
+            if (max_prefix == NULL
+                || entry->prefix_len > max_prefix->prefix_len
+                || (entry->prefix_len == max_prefix->prefix_len
+                    && entry->metric < max_prefix->metric)) {
+                max_prefix = entry;
+            }
+        }
+        entry = entry->next;
+    }
+
+    if (max_prefix == NULL) {
+        return 0;
+    }
+
+    return max_prefix->next_hop;
+}
 
 #endif 
 
@@ -608,10 +782,10 @@ int main(int argc, char **argv)
 //    fish_scheduleevent(0, &my_timed_event, NULL);
    
 // Full functionality
-//    fish_fwd.add_fwtable_entry = &my_add_fwtable_entry;
-//    fish_fwd.remove_fwtable_entry = &my_remove_fwtable_entry;
-//    fish_fwd.update_fwtable_metric = &my_update_fwtable_metric;
-//    fish_fwd.longest_prefix_match = &my_longest_prefix_match;
+   fish_fwd.add_fwtable_entry = &my_add_fwtable_entry;
+   fish_fwd.remove_fwtable_entry = &my_remove_fwtable_entry;
+   fish_fwd.update_fwtable_metric = &my_update_fwtable_metric;
+   fish_fwd.longest_prefix_match = &my_longest_prefix_match;
 #endif
 
 #if 1
@@ -658,6 +832,13 @@ int main(int argc, char **argv)
     // Cleanup your data structures here
     if (broadcast_table) {
         hashTable_destroy(broadcast_table);
+    }
+
+    fwEntry_t* entry = fwtable_head;
+    while (entry) {
+        fwEntry_t* next = entry->next;
+        free(entry);
+        entry = next;
     }
     return 0;
 }

@@ -12,7 +12,7 @@ typedef enum {
 
 // L3 Structs
 
-#define FISH_BROADCAST_ADDR 0xFFFFFFFF
+#define FISH_BROADCAST_ADDR (0xFFFFFFFF)
 
 typedef struct __attribute__((packed)) l3Header_t {
     uint8_t ttl;
@@ -30,6 +30,19 @@ typedef enum {
     L3_PROTO_TRANSPORT = 5,
     L3_PROTO_FCMP = 6,
 } L3Protocol_t;
+
+// Forwarding Table Structs
+
+typedef struct fwEntry_t {
+    fnaddr_t dst;          
+    fnaddr_t mask;         
+    int prefix_len;        // 32 for /32 
+    fnaddr_t next_hop;        
+    int metric;
+    char type;
+    void *user_data;
+    struct fwEntry_t *next;
+} fwEntry_t;
 
 // L4 Structs
 
